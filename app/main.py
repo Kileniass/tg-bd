@@ -2,11 +2,30 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app import models, crud, database, utils
 from app.database import SessionLocal, engine
+from fastapi.middleware.cors import CORSMiddleware
 
 # Создание таблиц в базе данных (если их ещё нет)
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Telegram WebApp for Auto Enthusiasts")
+
+
+#Укажи, с каких доменов можно обращаться к API
+origins = [
+    "https://web.telegram.org",           # для Telegram WebApp
+    "https://tвой-фронт-домен.vercel.app",  # если фронт будет хоститься
+    "http://localhost:3000"               # для разработки на React/Vue
+]
+
+#Middleware для CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],   # Разрешить все методы: GET, POST и т.д.
+    allow_headers=["*"],   # Разрешить все заголовки
+)
+
 
 # Зависимость для получения сессии базы данных
 def get_db():
