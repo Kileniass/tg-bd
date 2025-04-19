@@ -11,6 +11,7 @@ class User(Base):
     photo_url = Column(String, nullable=True)
     car = Column(String, nullable=False)
     region = Column(String, nullable=False)
+    about = Column(String, nullable=True)
 
     # Связи с лайками и дизлайками
     likes = relationship("Like", back_populates="from_user", foreign_keys="[Like.from_user_id]")

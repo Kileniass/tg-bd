@@ -24,3 +24,7 @@ class MatchRead(BaseModel):
 
     class Config:
         orm_mode = True
+
+class AboutUpdate(BaseModel):
+    user_id: int
+    about: str

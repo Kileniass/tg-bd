@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app import models, crud, database, utils
 from app.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
+from app.schemas import AboutUpdate 
 
 # Создание таблиц в базе данных (если их ещё нет)
 models.Base.metadata.create_all(bind=engine)
@@ -60,7 +61,8 @@ def next_profile(current_user_id: int, db: Session = Depends(get_db)):
                 "age": profile.age,
                 "photo_url": profile.photo_url,
                 "car": profile.car,
-                "region": profile.region
+                "region": profile.region,
+                "about": profile.about
             }
         }
     else:
@@ -77,7 +79,8 @@ def matches(user_id: int, db: Session = Depends(get_db)):
                 "age": user.age,
                 "photo_url": user.photo_url,
                 "car": user.car,
-                "region": user.region
+                "region": user.region,
+                "about": user.about
             }
             for user in matched_users
         ]
@@ -87,3 +90,11 @@ def matches(user_id: int, db: Session = Depends(get_db)):
 def generate_password():
     password = utils.generate_password()
     return {"password": password}
+
+@app.put("/profiles/about")
+def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
+    user = crud.update_about(db, user_id=data.user_id, about_text=data.about)
+    if user:
+        return {"message": "About section updated", "about": user.about}
+    else:
+        return {"message": "User not found"}

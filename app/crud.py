@@ -51,3 +51,19 @@ def get_matches(db: Session, user_id: int):
     ).filter(
         (models.Match.user1_id == user_id) | (models.Match.user2_id == user_id)
     ).all()
+
+def update_about(db: Session, user_id: int, about_text: str):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        user.about = about_text
+        db.commit()
+        db.refresh(user)
+    return user
+
+def update_about(db: Session, user_id: int, about_text: str):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        user.about = about_text
+        db.commit()
+        db.refresh(user)
+    return user
