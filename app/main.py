@@ -1,24 +1,23 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app import models, crud, database, utils
+from app import models, crud, database, utils, schemas
 from app.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
-from app.schemas import AboutUpdate 
+from app.schemas import AboutUpdate
 
 # Создание таблиц в базе данных (если их ещё нет)
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Telegram WebApp for Auto Enthusiasts")
 
-
-#Укажи, с каких доменов можно обращаться к API
+# Укажи, с каких доменов можно обращаться к API
 origins = [
     "https://web.telegram.org",           # для Telegram WebApp
     "https://tвой-фронт-домен.vercel.app",  # если фронт будет хоститься
     "http://localhost:3000"               # для разработки на React/Vue
 ]
 
-#Middleware для CORS
+# Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -26,7 +25,6 @@ app.add_middleware(
     allow_methods=["*"],   # Разрешить все методы: GET, POST и т.д.
     allow_headers=["*"],   # Разрешить все заголовки
 )
-
 
 # Зависимость для получения сессии базы данных
 def get_db():
@@ -39,6 +37,28 @@ def get_db():
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the auto racing community!"}
+
+@app.get("/api/init/{telegram_id}")
+def init_user(telegram_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        new_user = schemas.UserCreate(telegram_id=telegram_id)
+        user = crud.create_user(db, new_user)
+    return user
+
+@app.put("/api/users/{telegram_id}")
+def update_user_profile(telegram_id: str, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+    updated_user = crud.update_user(db, telegram_id, user_update)
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return updated_user
+
+@app.get("/api/users/{telegram_id}")
+def get_user_profile(telegram_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 @app.post("/profiles/{user_id}/like")
 def like_profile(user_id: int, current_user_id: int, db: Session = Depends(get_db)):

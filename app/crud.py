@@ -1,5 +1,24 @@
 from sqlalchemy.orm import Session
-from app import models
+from app import models, schemas
+
+def get_user_by_telegram_id(db: Session, telegram_id: str):
+    return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
+
+def create_user(db: Session, user: schemas.UserCreate):
+    db_user = models.User(**user.dict())
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def update_user(db: Session, telegram_id: str, user: schemas.UserUpdate):
+    db_user = get_user_by_telegram_id(db, telegram_id)
+    if db_user:
+        for key, value in user.dict(exclude_unset=True).items():
+            setattr(db_user, key, value)
+        db.commit()
+        db.refresh(db_user)
+    return db_user
 
 def like_user(db: Session, from_user_id: int, to_user_id: int):
     like = models.Like(from_user_id=from_user_id, to_user_id=to_user_id)
@@ -51,14 +70,6 @@ def get_matches(db: Session, user_id: int):
     ).filter(
         (models.Match.user1_id == user_id) | (models.Match.user2_id == user_id)
     ).all()
-
-def update_about(db: Session, user_id: int, about_text: str):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if user:
-        user.about = about_text
-        db.commit()
-        db.refresh(user)
-    return user
 
 def update_about(db: Session, user_id: int, about_text: str):
     user = db.query(models.User).filter(models.User.id == user_id).first()

@@ -1,14 +1,22 @@
 from pydantic import BaseModel
 
-class UserCreate(BaseModel):
-    name: str
-    age: int
-    photo_url: str
-    car: str
-    region: str
+class UserBase(BaseModel):
+    name: str = ""
+    age: int = 0
+    photo_url: str = ""
+    car: str = ""
+    region: str = ""
+    about: str = ""
 
-class UserRead(UserCreate):
+class UserCreate(UserBase):
+    telegram_id: str
+
+class UserUpdate(UserBase):
+    pass
+
+class UserRead(UserBase):
     id: int
+    telegram_id: str
 
     class Config:
         orm_mode = True
