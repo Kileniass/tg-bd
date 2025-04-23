@@ -201,12 +201,22 @@ def update_user_profile(session_id: str, user_update: UserUpdate, db: Session = 
 async def get_profile(session_id: str, db: Session = Depends(get_db)):
     try:
         logger.info(f"Fetching profile for user with session ID: {session_id}")
-        user = crud.get_user_by_telegram_id(db, session_id)
+        user = db.query(models.User).filter(models.User.session_id == session_id).first()
         if not user:
-            logger.error(f"User not found: {session_id}")
+            logger.error(f"User not found with session ID: {session_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
-        return user
+        return {
+            "user_id": user.id,
+            "session_id": user.session_id,
+            "is_new": user.is_new,
+            "name": user.name,
+            "age": user.age,
+            "car": user.car,
+            "region": user.region,
+            "about": user.about,
+            "photo_url": user.photo_url
+        }
     except Exception as e:
         logger.error(f"Error fetching profile for user {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
