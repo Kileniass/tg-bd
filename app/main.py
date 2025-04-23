@@ -110,16 +110,11 @@ async def options_route(request: Request, rest_of_path: str):
 async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     try:
         # Проверяем, существует ли пользователь с таким telegram_id
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = crud.get_user_by_telegram_id(db, telegram_id)
         
         if not user:
             # Создаем нового пользователя
-            user = User(
-                telegram_id=telegram_id,
-                session_id=CURRENT_SESSION_ID,
-                is_new=True
-            )
-            db.add(user)
+            user = crud.create_user(db, UserCreate(telegram_id=str(telegram_id)))
         else:
             # Обновляем session_id для существующего пользователя
             user.session_id = CURRENT_SESSION_ID
@@ -141,7 +136,7 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     summary="Обновление профиля пользователя",
     description="Обновляет данные профиля пользователя",
     response_description="Обновленные данные пользователя")
-def update_user_profile(session_id: str, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+def update_user_profile(session_id: str, user_update: UserUpdate, db: Session = Depends(get_db)):
     updated_user = crud.update_user(db, session_id, user_update)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -154,17 +149,12 @@ def update_user_profile(session_id: str, user_update: schemas.UserUpdate, db: Se
 async def get_profile(session_id: str, db: Session = Depends(get_db)):
     try:
         logger.info(f"Fetching profile for user with session ID: {session_id}")
-        user = db.query(User).filter(User.session_id == session_id).first()
+        user = crud.get_user_by_telegram_id(db, session_id)
         if not user:
             logger.error(f"User not found: {session_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
-        profile = crud.get_profile(db, user.id)
-        if not profile:
-            logger.error(f"Profile not found for user: {session_id}")
-            raise HTTPException(status_code=404, detail="Profile not found")
-            
-        return profile
+        return user
     except Exception as e:
         logger.error(f"Error fetching profile for user {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -240,11 +230,10 @@ def generate_password():
     description="Обновляет раздел 'О себе' в профиле",
     response_description="Обновленное описание")
 def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
-    user = crud.update_about(db, user_id=data.user_id, about_text=data.about)
-    if user:
-        return {"message": "About section updated", "about": user.about}
-    else:
-        return {"message": "User not found"}
+    user = crud.update_about(db, data.user_id, data.about)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
 
