@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from app import models, crud, database, utils, schemas
 from app.database import SessionLocal, engine
@@ -9,6 +9,32 @@ from fastapi.openapi.utils import get_openapi
 import os
 import shutil
 from pathlib import Path
+import logging
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Middleware для логирования запросов
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+        
+        # Логируем детали запроса
+        logger.info(f"Request: {request.method} {request.url}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
+        # Обрабатываем запрос
+        response = await call_next(request)
+        
+        # Логируем результат
+        process_time = time.time() - start_time
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Process time: {process_time:.2f}s")
+        
+        return response
 
 # Создание таблиц в базе данных (если их ещё нет)
 models.Base.metadata.create_all(bind=engine)
@@ -26,15 +52,18 @@ app = FastAPI(
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Добавляем middleware для логирования
+app.add_middleware(LoggingMiddleware)
+
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Временно разрешаем все домены для отладки
+    allow_origins=["https://kileniass.github.io"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=3600  # Кэшируем CORS ответы на час
+    max_age=3600
 )
 
 # Зависимость для получения сессии базы данных
@@ -46,8 +75,13 @@ def get_db():
         db.close()
 
 @app.get("/")
-def read_root():
-    return {"message": "Welcome to the auto racing community!"}
+async def read_root(request: Request):
+    logger.info(f"Root endpoint accessed from {request.client.host}")
+    return {
+        "message": "Welcome to the auto racing community!",
+        "docs_url": "/docs",
+        "openapi_url": "/openapi.json"
+    }
 
 @app.get("/api/init/{telegram_id}", 
     summary="Инициализация пользователя",
