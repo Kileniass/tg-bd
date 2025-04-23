@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -6,7 +6,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(String, unique=True, nullable=False)
+    telegram_id = Column(Integer, unique=True, index=True)
+    session_id = Column(String, unique=True, index=True)  # Новый ID для каждой сессии
+    is_new = Column(Boolean, default=True)
     name = Column(String, nullable=False)
     age = Column(Integer, nullable=False)
     photo_url = Column(String, nullable=True)

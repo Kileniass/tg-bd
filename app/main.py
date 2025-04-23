@@ -1,32 +1,40 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
+import os
+import time
+import shutil
+import logging
+from typing import Callable
+from pathlib import Path
+from fastapi import FastAPI, Request, Response, HTTPException, Depends, File, UploadFile
+from fastapi.middleware.base import BaseHTTPMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app import models, crud, database, utils, schemas
 from app.database import SessionLocal, engine
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from app.schemas import AboutUpdate
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-import os
-import shutil
-from pathlib import Path
-import logging
-import time
-from typing import Callable
 from starlette.requests import Request
 from starlette.responses import Response
+import random
+import string
 
-# Настройка логирования
+# Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 # Создаем директорию для загруженных файлов
-UPLOAD_DIR = Path("static/photos")
+UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Конфигурация CORS
+ALLOWED_ORIGINS = [
+    "https://kileniass.github.io",
+    "http://localhost:3000",  # для локальной разработки
+    "http://localhost:5000"   # для локальной разработки
+]
 
 app = FastAPI(
     title="Telegram WebApp for Auto Enthusiasts",
@@ -38,30 +46,54 @@ app = FastAPI(
 # Middleware для CORS с подробным логированием
 class DetailedCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        logger.debug(f"Incoming request: {request.method} {request.url}")
+        origin = request.headers.get('origin')
+        logger.debug(f"Incoming request from origin: {origin}")
+        logger.debug(f"Request method: {request.method}")
+        logger.debug(f"Request path: {request.url.path}")
         logger.debug(f"Request headers: {dict(request.headers)}")
 
+        # Проверяем origin
+        if origin and origin not in ALLOWED_ORIGINS:
+            logger.warning(f"Blocked request from unauthorized origin: {origin}")
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Origin not allowed"}
+            )
+
+        # Для preflight OPTIONS запросов
         if request.method == "OPTIONS":
             logger.debug("Processing CORS preflight request")
-            headers = {
-                "Access-Control-Allow-Origin": "https://kileniass.github.io",
-                "Access-Control-Allow-Methods": "*",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "3600",
-            }
-            return JSONResponse(content={}, headers=headers)
+            return JSONResponse(
+                content={},
+                headers={
+                    "Access-Control-Allow-Origin": origin or ALLOWED_ORIGINS[0],
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+                    "Access-Control-Max-Age": "3600",
+                }
+            )
 
-        response = await call_next(request)
-        
-        # Добавляем CORS заголовки к каждому ответу
-        response.headers["Access-Control-Allow-Origin"] = "https://kileniass.github.io"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        
-        logger.debug(f"Response status: {response.status_code}")
-        logger.debug(f"Response headers: {dict(response.headers)}")
-        
-        return response
+        # Для всех остальных запросов
+        try:
+            response = await call_next(request)
+            
+            # Добавляем CORS заголовки
+            if origin in ALLOWED_ORIGINS:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+                response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+                
+            logger.debug(f"Response status: {response.status_code}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error processing request: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"}
+            )
 
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -72,21 +104,54 @@ app.add_middleware(DetailedCORSMiddleware)
 # Стандартный CORS middleware (как запасной вариант)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kileniass.github.io"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
     max_age=3600
 )
 
-# Зависимость для получения сессии базы данных
+# Dependency для получения DB сессии
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+# Middleware для логирования запросов
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        start_time = time.time()
+        
+        # Log request details
+        logger.info(f"Request: {request.method} {request.url}")
+        if request.query_params:
+            logger.debug(f"Query params: {dict(request.query_params)}")
+        
+        if request.method in ['POST', 'PUT']:
+            try:
+                if not request.headers.get('content-type', '').startswith('multipart/form-data'):
+                    body = await request.json()
+                    logger.debug(f"Request body: {body}")
+            except:
+                pass
+
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            logger.info(f"Response status: {response.status_code}, Process time: {process_time:.3f}s")
+            return response
+        except Exception as e:
+            logger.error(f"Request failed: {str(e)}")
+            process_time = time.time() - start_time
+            logger.info(f"Error response, Process time: {process_time:.3f}s")
+            raise
+
+# Добавляем middleware для логирования
+app.add_middleware(RequestLoggingMiddleware)
+
+# Глобальная переменная для хранения текущей сессии
+CURRENT_SESSION_ID = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 @app.get("/")
 async def read_root(request: Request):
@@ -115,32 +180,67 @@ async def options_route(request: Request, rest_of_path: str):
     summary="Инициализация пользователя",
     description="Создает нового пользователя или возвращает существующего",
     response_description="Данные пользователя")
-def init_user(telegram_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        new_user = schemas.UserCreate(telegram_id=telegram_id)
-        user = crud.create_user(db, new_user)
-    return user
+async def init_user(telegram_id: int, db: Session = Depends(get_db)):
+    try:
+        # Проверяем, существует ли пользователь с таким telegram_id
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        
+        if not user:
+            # Создаем нового пользователя
+            user = User(
+                telegram_id=telegram_id,
+                session_id=CURRENT_SESSION_ID,
+                is_new=True
+            )
+            db.add(user)
+        else:
+            # Обновляем session_id для существующего пользователя
+            user.session_id = CURRENT_SESSION_ID
+            user.is_new = False
+        
+        db.commit()
+        db.refresh(user)
+        
+        return {
+            "user_id": user.id,
+            "session_id": user.session_id,
+            "is_new": user.is_new
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/users/{telegram_id}",
+@app.put("/api/users/{session_id}",
     summary="Обновление профиля пользователя",
     description="Обновляет данные профиля пользователя",
     response_description="Обновленные данные пользователя")
-def update_user_profile(telegram_id: str, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
-    updated_user = crud.update_user(db, telegram_id, user_update)
+def update_user_profile(session_id: str, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+    updated_user = crud.update_user(db, session_id, user_update)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     return updated_user
 
-@app.get("/api/users/{telegram_id}",
+@app.get("/api/users/{session_id}",
     summary="Получение профиля пользователя",
     description="Возвращает данные профиля пользователя",
     response_description="Данные пользователя")
-def get_user_profile(telegram_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+async def get_profile(session_id: str, db: Session = Depends(get_db)):
+    try:
+        logger.info(f"Fetching profile for user with session ID: {session_id}")
+        user = db.query(User).filter(User.session_id == session_id).first()
+        if not user:
+            logger.error(f"User not found: {session_id}")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        profile = crud.get_profile(db, user.id)
+        if not profile:
+            logger.error(f"Profile not found for user: {session_id}")
+            raise HTTPException(status_code=404, detail="Profile not found")
+            
+        return profile
+    except Exception as e:
+        logger.error(f"Error fetching profile for user {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/profiles/{user_id}/like",
     summary="Лайк профиля",
@@ -219,40 +319,50 @@ def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
     else:
         return {"message": "User not found"}
 
-@app.post("/api/users/{telegram_id}/photo",
-    summary="Загрузка фотографии профиля",
-    description="Загружает фотографию профиля пользователя",
-    response_description="URL загруженной фотографии")
-async def upload_photo(
-    telegram_id: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
+
+@app.post("/photos/upload/{session_id}")
+async def upload_photo(session_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
-        # Проверяем существование пользователя
-        user = crud.get_user_by_telegram_id(db, telegram_id)
+        # Validate file type
+        if file.content_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_IMAGE_TYPES)}"
+            )
+
+        # Create upload directory if it doesn't exist
+        UPLOAD_DIR.mkdir(exist_ok=True)
+
+        # Generate unique filename with timestamp
+        timestamp = int(time.time())
+        file_extension = file.filename.split('.')[-1]
+        filename = f"{session_id}_{timestamp}.{file_extension}"
+        file_path = UPLOAD_DIR / filename
+
+        # Save file
+        try:
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            logger.error(f"Failed to save file: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+
+        # Update user's photo URL in database
+        user = db.query(User).filter(User.session_id == session_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Проверяем тип файла
-        if not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-
-        # Создаем уникальное имя файла
-        file_extension = os.path.splitext(file.filename)[1]
-        filename = f"user_{telegram_id}{file_extension}"
-        file_path = UPLOAD_DIR / filename
-
-        # Сохраняем файл
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Обновляем URL фотографии в базе данных
-        photo_url = f"/static/photos/{filename}"
-        user.photo_url = photo_url
+        user.photo_url = f"/uploads/{filename}"
         db.commit()
 
-        return {"photo_url": photo_url}
+        logger.info(f"Successfully uploaded photo for user {session_id}: {filename}")
+        return {"photo_url": user.photo_url}
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error uploading photo for user {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error during file upload")
+    finally:
+        file.file.close()
