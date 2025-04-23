@@ -116,11 +116,22 @@ async def options_route(request: Request, rest_of_path: str):
 async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     try:
         # Проверяем, существует ли пользователь с таким telegram_id
-        user = crud.get_user_by_telegram_id(db, telegram_id)
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
         
         if not user:
-            # Создаем нового пользователя
-            user = crud.create_user(db, UserCreate(telegram_id=str(telegram_id)))
+            # Создаем нового пользователя с минимальными данными
+            user = User(
+                telegram_id=telegram_id,
+                session_id=CURRENT_SESSION_ID,
+                is_new=True,
+                name=None,
+                age=None,
+                car=None,
+                region=None,
+                about=None,
+                photo_url=None
+            )
+            db.add(user)
         else:
             # Обновляем session_id для существующего пользователя
             user.session_id = CURRENT_SESSION_ID
@@ -132,7 +143,13 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
         return {
             "user_id": user.id,
             "session_id": user.session_id,
-            "is_new": user.is_new
+            "is_new": user.is_new,
+            "name": user.name,
+            "age": user.age,
+            "car": user.car,
+            "region": user.region,
+            "about": user.about,
+            "photo_url": user.photo_url
         }
     except Exception as e:
         db.rollback()

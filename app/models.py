@@ -9,11 +9,11 @@ class User(Base):
     telegram_id = Column(Integer, unique=True, index=True)
     session_id = Column(String, unique=True, index=True)  # Новый ID для каждой сессии
     is_new = Column(Boolean, default=True)
-    name = Column(String, nullable=False)
-    age = Column(Integer, nullable=False)
+    name = Column(String, nullable=True)
+    age = Column(Integer, nullable=True)
     photo_url = Column(String, nullable=True)
-    car = Column(String, nullable=False)
-    region = Column(String, nullable=False)
+    car = Column(String, nullable=True)
+    region = Column(String, nullable=True)
     about = Column(String, nullable=True)
 
     # Связи с лайками и дизлайками
