@@ -13,9 +13,15 @@ import shutil
 from pathlib import Path
 import logging
 import time
+from typing import Callable
+from starlette.requests import Request
+from starlette.responses import Response
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Создаем директорию для загруженных файлов
@@ -25,13 +31,45 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(
     title="Telegram WebApp for Auto Enthusiasts",
     description="API для приложения знакомств автолюбителей",
-    version="1.0.0"
+    version="1.0.0",
+    debug=True
 )
+
+# Middleware для CORS с подробным логированием
+class DetailedCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        logger.debug(f"Incoming request: {request.method} {request.url}")
+        logger.debug(f"Request headers: {dict(request.headers)}")
+
+        if request.method == "OPTIONS":
+            logger.debug("Processing CORS preflight request")
+            headers = {
+                "Access-Control-Allow-Origin": "https://kileniass.github.io",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "3600",
+            }
+            return JSONResponse(content={}, headers=headers)
+
+        response = await call_next(request)
+        
+        # Добавляем CORS заголовки к каждому ответу
+        response.headers["Access-Control-Allow-Origin"] = "https://kileniass.github.io"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+        logger.debug(f"Response status: {response.status_code}")
+        logger.debug(f"Response headers: {dict(response.headers)}")
+        
+        return response
 
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Middleware для CORS
+# Добавляем middleware
+app.add_middleware(DetailedCORSMiddleware)
+
+# Стандартный CORS middleware (как запасной вариант)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://kileniass.github.io"],
@@ -41,34 +79,6 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=3600
 )
-
-# Middleware для логирования CORS
-class CORSLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Логируем детали запроса
-        logger.info(f"Incoming request: {request.method} {request.url}")
-        logger.info(f"Headers: {dict(request.headers)}")
-        
-        # Для OPTIONS запросов (preflight)
-        if request.method == "OPTIONS":
-            logger.info("Handling CORS preflight request")
-            headers = {
-                "Access-Control-Allow-Origin": "https://kileniass.github.io",
-                "Access-Control-Allow-Methods": "*",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Max-Age": "3600",
-            }
-            return JSONResponse(content={}, headers=headers)
-        
-        response = await call_next(request)
-        
-        # Логируем ответ
-        logger.info(f"Response status: {response.status_code}")
-        logger.info(f"Response headers: {dict(response.headers)}")
-        
-        return response
-
-app.add_middleware(CORSLoggingMiddleware)
 
 # Зависимость для получения сессии базы данных
 def get_db():
@@ -86,6 +96,20 @@ async def read_root(request: Request):
         "docs_url": "/docs",
         "openapi_url": "/openapi.json"
     }
+
+@app.options("/{rest_of_path:path}")
+async def options_route(request: Request, rest_of_path: str):
+    logger.debug(f"OPTIONS request received for /{rest_of_path}")
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "https://kileniass.github.io",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
 
 @app.get("/api/init/{telegram_id}", 
     summary="Инициализация пользователя",
