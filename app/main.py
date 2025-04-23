@@ -26,9 +26,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с нашего домена
-    allow_credentials=False,  # Отключаем credentials для CORS
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Origin"],
+    allow_credentials=True,  # Включаем поддержку credentials
+    allow_methods=["*"],  # Разрешаем все методы
+    allow_headers=["*"],  # Разрешаем все заголовки
+    expose_headers=["*"]  # Разрешаем доступ ко всем заголовкам ответа
 )
 
 # Зависимость для получения сессии базы данных
