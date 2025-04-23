@@ -1,22 +1,33 @@
 from pydantic import BaseModel
+from typing import Optional
 
 class UserBase(BaseModel):
-    name: str = ""
-    age: int = 0
-    photo_url: str = ""
-    car: str = ""
-    region: str = ""
-    about: str = ""
+    telegram_id: str
 
 class UserCreate(UserBase):
-    telegram_id: str
+    name: Optional[str] = None
+    age: Optional[int] = None
+    photo_url: Optional[str] = None
+    car: Optional[str] = None
+    region: Optional[str] = None
+    about: Optional[str] = None
 
-class UserUpdate(UserBase):
-    pass
+class UserUpdate(BaseModel):
+    name: str
+    age: int
+    photo_url: Optional[str] = None
+    car: str
+    region: str
+    about: Optional[str] = None
 
-class UserRead(UserBase):
+class User(UserBase):
     id: int
-    telegram_id: str
+    name: str
+    age: int
+    photo_url: Optional[str] = None
+    car: str
+    region: str
+    about: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -36,3 +47,6 @@ class MatchRead(BaseModel):
 class AboutUpdate(BaseModel):
     user_id: int
     about: str
+
+class PhotoUpload(BaseModel):
+    photo_url: str

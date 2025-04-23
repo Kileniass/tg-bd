@@ -1,21 +1,32 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from app import models, schemas
+from typing import List, Tuple, Optional
 
-def get_user_by_telegram_id(db: Session, telegram_id: str):
+def get_user_by_telegram_id(db: Session, telegram_id: str) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
 
-def create_user(db: Session, user: schemas.UserCreate):
+def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db_user = models.User(**user.dict())
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
-def update_user(db: Session, telegram_id: str, user: schemas.UserUpdate):
+def update_user(db: Session, telegram_id: str, user_update: schemas.UserUpdate) -> Optional[models.User]:
     db_user = get_user_by_telegram_id(db, telegram_id)
     if db_user:
-        for key, value in user.dict(exclude_unset=True).items():
+        update_data = user_update.dict(exclude_unset=True)
+        for key, value in update_data.items():
             setattr(db_user, key, value)
+        db.commit()
+        db.refresh(db_user)
+    return db_user
+
+def update_user_photo(db: Session, telegram_id: str, photo_url: str) -> Optional[models.User]:
+    db_user = get_user_by_telegram_id(db, telegram_id)
+    if db_user:
+        db_user.photo_url = photo_url
         db.commit()
         db.refresh(db_user)
     return db_user
