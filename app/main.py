@@ -45,13 +45,14 @@ app = FastAPI(
     debug=True
 )
 
-# Middleware для CORS - разрешаем запросы с любых доменов
+# Middleware для CORS - разрешаем запросы с kileniass.github.io
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешаем запросы с любых доменов
+    allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с kileniass.github.io
     allow_credentials=True,
     allow_methods=["*"],  # Разрешаем все методы: GET, POST и т.д.
     allow_headers=["*"],  # Разрешаем все заголовки
+    expose_headers=["*"]  # Разрешаем доступ ко всем заголовкам ответа
 )
 
 # Dependency для получения DB сессии
@@ -69,6 +70,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         # Log request details
         logger.info(f"Request: {request.method} {request.url}")
+        logger.info(f"Origin: {request.headers.get('origin')}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
         if request.query_params:
             logger.debug(f"Query params: {dict(request.query_params)}")
         
@@ -84,9 +88,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Process request
         response = await call_next(request)
         
+        # Добавляем CORS заголовки
+        response.headers["Access-Control-Allow-Origin"] = "https://kileniass.github.io"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Origin, X-Request-ID, X-Client-Version"
+        
         # Log response details
         process_time = time.time() - start_time
         logger.info(f"Response: {response.status_code} (took {process_time:.2f} seconds)")
+        logger.info(f"Response headers: {dict(response.headers)}")
         
         return response
 
@@ -109,8 +120,8 @@ async def options_route(request: Request, rest_of_path: str):
         content={},
         headers={
             "Access-Control-Allow-Origin": "https://kileniass.github.io",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Accept, Origin, X-Request-ID, X-Client-Version",
             "Access-Control-Allow-Credentials": "true",
             "Access-Control-Max-Age": "3600",
         }
