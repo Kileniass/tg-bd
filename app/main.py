@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from app.schemas import AboutUpdate, UserUpdate, UserCreate, User, LikeCreate, MatchRead, PhotoUpload
+from app.schemas import AboutUpdate, UserUpdate, UserCreate, User as UserSchema, LikeCreate, MatchRead, PhotoUpload
 import random
 import string
 
@@ -116,11 +116,11 @@ async def options_route(request: Request, rest_of_path: str):
 async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     try:
         # Проверяем, существует ли пользователь с таким telegram_id
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
         
         if not user:
             # Создаем нового пользователя с минимальными данными
-            user = User(
+            user = models.User(
                 telegram_id=telegram_id,
                 session_id=CURRENT_SESSION_ID,
                 is_new=True,
@@ -288,7 +288,7 @@ async def upload_photo(session_id: str, file: UploadFile = File(...), db: Sessio
             raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
         # Update user's photo URL in database
-        user = db.query(User).filter(User.session_id == session_id).first()
+        user = db.query(models.User).filter(models.User.session_id == session_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
