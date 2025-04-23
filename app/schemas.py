@@ -19,7 +19,7 @@ class UserRead(UserBase):
     telegram_id: str
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class LikeCreate(BaseModel):
     from_user_id: int
@@ -31,7 +31,7 @@ class MatchRead(BaseModel):
     user2_id: int
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class AboutUpdate(BaseModel):
     user_id: int
