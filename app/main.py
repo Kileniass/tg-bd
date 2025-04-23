@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app import models, crud, database, utils, schemas
 from app.database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.schemas import AboutUpdate
 from fastapi.openapi.utils import get_openapi
 import os
@@ -22,14 +23,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Монтируем статические файлы
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с нашего домена
-    allow_credentials=True,  # Включаем поддержку credentials
-    allow_methods=["*"],  # Разрешаем все методы
-    allow_headers=["*"],  # Разрешаем все заголовки
-    expose_headers=["*"]  # Разрешаем доступ ко всем заголовкам ответа
+    allow_origins=["*"],  # Временно разрешаем все домены для отладки
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600  # Кэшируем CORS ответы на час
 )
 
 # Зависимость для получения сессии базы данных
