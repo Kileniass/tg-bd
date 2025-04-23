@@ -26,7 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Определение констант
-CURRENT_SESSION_ID = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 UPLOAD_DIR = Path("uploads")
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
 
@@ -34,8 +33,27 @@ ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
 try:
     models.Base.metadata.create_all(bind=engine)
     logger.info("Database tables created successfully")
+    
+    # Создаем тестового пользователя
+    db = SessionLocal()
+    try:
+        test_user = crud.get_user_by_telegram_id(db, 5342914111)
+        if not test_user:
+            test_user = models.User(
+                telegram_id=5342914111,
+                name="Михаил",
+                age=18,
+                car="Mercedes Benz S-class W220",
+                region="Новосибирск",
+                about="Каждый чёткий пацан должен купить себе старого немца"
+            )
+            db.add(test_user)
+            db.commit()
+            logger.info("Test user created successfully")
+    finally:
+        db.close()
 except Exception as e:
-    logger.error(f"Error creating database tables: {str(e)}")
+    logger.error(f"Error creating database tables or test user: {str(e)}")
     raise
 
 app = FastAPI(
@@ -48,11 +66,11 @@ app = FastAPI(
 # Middleware для CORS - разрешаем запросы с kileniass.github.io
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с kileniass.github.io
+    allow_origins=["https://kileniass.github.io"],
     allow_credentials=True,
-    allow_methods=["*"],  # Разрешаем все методы: GET, POST и т.д.
-    allow_headers=["*"],  # Разрешаем все заголовки
-    expose_headers=["*"]  # Разрешаем доступ ко всем заголовкам ответа
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Dependency для получения DB сессии
@@ -135,17 +153,12 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     try:
         logger.info(f"Starting user initialization for telegram_id: {telegram_id}")
         
-        # Проверяем, существует ли пользователь с таким telegram_id
-        logger.info("Querying database for existing user")
         user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
         
         if not user:
             logger.info("User not found, creating new user")
-            # Создаем нового пользователя с минимальными данными
             user = models.User(
                 telegram_id=telegram_id,
-                session_id=CURRENT_SESSION_ID,
-                is_new=True,
                 name=None,
                 age=None,
                 car=None,
@@ -153,23 +166,14 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
                 about=None,
                 photo_url=None
             )
-            logger.info("Adding new user to database")
             db.add(user)
-        else:
-            logger.info(f"Existing user found: {user.id}")
-            # Обновляем session_id для существующего пользователя
-            user.session_id = CURRENT_SESSION_ID
-            user.is_new = False
         
-        logger.info("Committing changes to database")
         db.commit()
-        logger.info("Refreshing user object")
         db.refresh(user)
         
-        response = {
+        return {
             "user_id": user.id,
-            "session_id": user.session_id,
-            "is_new": user.is_new,
+            "telegram_id": user.telegram_id,
             "name": user.name,
             "age": user.age,
             "car": user.car,
@@ -177,48 +181,36 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
             "about": user.about,
             "photo_url": user.photo_url
         }
-        logger.info(f"Returning response: {response}")
-        return response
     except Exception as e:
         logger.error(f"Error in init_user: {str(e)}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
-@app.put("/api/users/{session_id}",
+@app.put("/api/users/{telegram_id}",
     summary="Обновление профиля пользователя",
     description="Обновляет данные профиля пользователя",
     response_description="Обновленные данные пользователя")
-def update_user_profile(session_id: str, user_update: UserUpdate, db: Session = Depends(get_db)):
-    updated_user = crud.update_user(db, session_id, user_update)
+def update_user_profile(telegram_id: int, user_update: UserUpdate, db: Session = Depends(get_db)):
+    updated_user = crud.update_user(db, telegram_id, user_update)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     return updated_user
 
-@app.get("/api/users/{session_id}",
+@app.get("/api/users/{telegram_id}",
     summary="Получение профиля пользователя",
     description="Возвращает данные профиля пользователя",
     response_description="Данные пользователя")
-async def get_profile(session_id: str, db: Session = Depends(get_db)):
+async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     try:
-        logger.info(f"Fetching profile for user with session ID: {session_id}")
-        user = db.query(models.User).filter(models.User.session_id == session_id).first()
+        logger.info(f"Fetching profile for user with telegram_id: {telegram_id}")
+        user = crud.get_user_by_telegram_id(db, telegram_id)
         if not user:
-            logger.error(f"User not found with session ID: {session_id}")
+            logger.error(f"User not found: {telegram_id}")
             raise HTTPException(status_code=404, detail="User not found")
         
-        return {
-            "user_id": user.id,
-            "session_id": user.session_id,
-            "is_new": user.is_new,
-            "name": user.name,
-            "age": user.age,
-            "car": user.car,
-            "region": user.region,
-            "about": user.about,
-            "photo_url": user.photo_url
-        }
+        return user
     except Exception as e:
-        logger.error(f"Error fetching profile for user {session_id}: {str(e)}")
+        logger.error(f"Error fetching profile for user {telegram_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/profiles/{user_id}/like",
@@ -297,8 +289,8 @@ def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@app.post("/photos/upload/{session_id}")
-async def upload_photo(session_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+@app.post("/photos/upload/{telegram_id}")
+async def upload_photo(telegram_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         # Validate file type
         if file.content_type not in ALLOWED_IMAGE_TYPES:
@@ -313,7 +305,7 @@ async def upload_photo(session_id: str, file: UploadFile = File(...), db: Sessio
         # Generate unique filename with timestamp
         timestamp = int(time.time())
         file_extension = file.filename.split('.')[-1]
-        filename = f"{session_id}_{timestamp}.{file_extension}"
+        filename = f"{telegram_id}_{timestamp}.{file_extension}"
         file_path = UPLOAD_DIR / filename
 
         # Save file
@@ -325,20 +317,20 @@ async def upload_photo(session_id: str, file: UploadFile = File(...), db: Sessio
             raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
         # Update user's photo URL in database
-        user = db.query(models.User).filter(models.User.session_id == session_id).first()
+        user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         user.photo_url = f"/uploads/{filename}"
         db.commit()
 
-        logger.info(f"Successfully uploaded photo for user {session_id}: {filename}")
+        logger.info(f"Successfully uploaded photo for user {telegram_id}: {filename}")
         return {"photo_url": user.photo_url}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uploading photo for user {session_id}: {str(e)}")
+        logger.error(f"Error uploading photo for user {telegram_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error during file upload")
     finally:
         file.file.close()

@@ -3,7 +3,7 @@ from sqlalchemy import or_, and_
 from app import models, schemas
 from typing import List, Tuple, Optional
 
-def get_user_by_telegram_id(db: Session, telegram_id: str) -> Optional[models.User]:
+def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
     return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
@@ -13,7 +13,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.refresh(db_user)
     return db_user
 
-def update_user(db: Session, telegram_id: str, user_update: schemas.UserUpdate) -> Optional[models.User]:
+def update_user(db: Session, telegram_id: int, user_update: schemas.UserUpdate) -> Optional[models.User]:
     db_user = get_user_by_telegram_id(db, telegram_id)
     if db_user:
         update_data = user_update.dict(exclude_unset=True)
@@ -23,7 +23,7 @@ def update_user(db: Session, telegram_id: str, user_update: schemas.UserUpdate) 
         db.refresh(db_user)
     return db_user
 
-def update_user_photo(db: Session, telegram_id: str, photo_url: str) -> Optional[models.User]:
+def update_user_photo(db: Session, telegram_id: int, photo_url: str) -> Optional[models.User]:
     db_user = get_user_by_telegram_id(db, telegram_id)
     if db_user:
         db_user.photo_url = photo_url
