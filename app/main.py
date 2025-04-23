@@ -5,7 +5,6 @@ import logging
 from typing import Callable
 from pathlib import Path
 from fastapi import FastAPI, Request, Response, HTTPException, Depends, File, UploadFile
-from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app import models, crud, database, utils, schemas
@@ -18,23 +17,8 @@ from starlette.responses import Response
 import random
 import string
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Создаем директорию для загруженных файлов
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-# Конфигурация CORS
-ALLOWED_ORIGINS = [
-    "https://kileniass.github.io",
-    "http://localhost:3000",  # для локальной разработки
-    "http://localhost:5000"   # для локальной разработки
-]
+# Создание таблиц в базе данных (если их ещё нет)
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Telegram WebApp for Auto Enthusiasts",
@@ -43,71 +27,13 @@ app = FastAPI(
     debug=True
 )
 
-# Middleware для CORS с подробным логированием
-class DetailedCORSMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        origin = request.headers.get('origin')
-        logger.debug(f"Incoming request from origin: {origin}")
-        logger.debug(f"Request method: {request.method}")
-        logger.debug(f"Request path: {request.url.path}")
-        logger.debug(f"Request headers: {dict(request.headers)}")
-
-        # Проверяем origin
-        if origin and origin not in ALLOWED_ORIGINS:
-            logger.warning(f"Blocked request from unauthorized origin: {origin}")
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Origin not allowed"}
-            )
-
-        # Для preflight OPTIONS запросов
-        if request.method == "OPTIONS":
-            logger.debug("Processing CORS preflight request")
-            return JSONResponse(
-                content={},
-                headers={
-                    "Access-Control-Allow-Origin": origin or ALLOWED_ORIGINS[0],
-                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-                    "Access-Control-Max-Age": "3600",
-                }
-            )
-
-        # Для всех остальных запросов
-        try:
-            response = await call_next(request)
-            
-            # Добавляем CORS заголовки
-            if origin in ALLOWED_ORIGINS:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-                response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
-                
-            logger.debug(f"Response status: {response.status_code}")
-            logger.debug(f"Response headers: {dict(response.headers)}")
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error processing request: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Internal server error"}
-            )
-
-# Монтируем статические файлы
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Добавляем middleware
-app.add_middleware(DetailedCORSMiddleware)
-
-# Стандартный CORS middleware (как запасной вариант)
+# Middleware для CORS - разрешаем запросы с любых доменов
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-    max_age=3600
+    allow_origins=["*"],  # Разрешаем запросы с любых доменов
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешаем все методы: GET, POST и т.д.
+    allow_headers=["*"],  # Разрешаем все заголовки
 )
 
 # Dependency для получения DB сессии

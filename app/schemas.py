@@ -30,7 +30,7 @@ class User(UserBase):
     about: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class LikeCreate(BaseModel):
     from_user_id: int
@@ -42,7 +42,7 @@ class MatchRead(BaseModel):
     user2_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AboutUpdate(BaseModel):
     user_id: int
