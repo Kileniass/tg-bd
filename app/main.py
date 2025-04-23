@@ -14,6 +14,7 @@ app = FastAPI(title="Telegram WebApp for Auto Enthusiasts")
 origins = [
     "https://web.telegram.org",           # для Telegram WebApp
     "https://kileniass.github.io",        # GitHub Pages
+    "https://kileniass.github.io/KURS",   # Фронтенд приложение
     "http://localhost:3000",              # для локальной разработки
     "http://localhost:5500"               # для Live Server
 ]
