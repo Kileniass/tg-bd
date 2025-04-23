@@ -6,38 +6,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.schemas import AboutUpdate
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import shutil
 from pathlib import Path
 import logging
 import time
-from starlette.middleware.base import BaseHTTPMiddleware
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Middleware для логирования запросов
-class LoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        start_time = time.time()
-        
-        # Логируем детали запроса
-        logger.info(f"Request: {request.method} {request.url}")
-        logger.info(f"Headers: {dict(request.headers)}")
-        
-        # Обрабатываем запрос
-        response = await call_next(request)
-        
-        # Логируем результат
-        process_time = time.time() - start_time
-        logger.info(f"Response status: {response.status_code}")
-        logger.info(f"Process time: {process_time:.2f}s")
-        
-        return response
-
-# Создание таблиц в базе данных (если их ещё нет)
-models.Base.metadata.create_all(bind=engine)
 
 # Создаем директорию для загруженных файлов
 UPLOAD_DIR = Path("static/photos")
@@ -52,19 +31,44 @@ app = FastAPI(
 # Монтируем статические файлы
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Добавляем middleware для логирования
-app.add_middleware(LoggingMiddleware)
-
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://kileniass.github.io"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600
 )
+
+# Middleware для логирования CORS
+class CORSLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Логируем детали запроса
+        logger.info(f"Incoming request: {request.method} {request.url}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
+        # Для OPTIONS запросов (preflight)
+        if request.method == "OPTIONS":
+            logger.info("Handling CORS preflight request")
+            headers = {
+                "Access-Control-Allow-Origin": "https://kileniass.github.io",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "3600",
+            }
+            return JSONResponse(content={}, headers=headers)
+        
+        response = await call_next(request)
+        
+        # Логируем ответ
+        logger.info(f"Response status: {response.status_code}")
+        logger.info(f"Response headers: {dict(response.headers)}")
+        
+        return response
+
+app.add_middleware(CORSLoggingMiddleware)
 
 # Зависимость для получения сессии базы данных
 def get_db():
