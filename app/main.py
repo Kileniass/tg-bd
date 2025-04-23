@@ -115,10 +115,14 @@ async def options_route(request: Request, rest_of_path: str):
     response_description="Данные пользователя")
 async def init_user(telegram_id: int, db: Session = Depends(get_db)):
     try:
+        logger.info(f"Starting user initialization for telegram_id: {telegram_id}")
+        
         # Проверяем, существует ли пользователь с таким telegram_id
+        logger.info("Querying database for existing user")
         user = db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
         
         if not user:
+            logger.info("User not found, creating new user")
             # Создаем нового пользователя с минимальными данными
             user = models.User(
                 telegram_id=telegram_id,
@@ -131,16 +135,20 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
                 about=None,
                 photo_url=None
             )
+            logger.info("Adding new user to database")
             db.add(user)
         else:
+            logger.info(f"Existing user found: {user.id}")
             # Обновляем session_id для существующего пользователя
             user.session_id = CURRENT_SESSION_ID
             user.is_new = False
         
+        logger.info("Committing changes to database")
         db.commit()
+        logger.info("Refreshing user object")
         db.refresh(user)
         
-        return {
+        response = {
             "user_id": user.id,
             "session_id": user.session_id,
             "is_new": user.is_new,
@@ -151,9 +159,12 @@ async def init_user(telegram_id: int, db: Session = Depends(get_db)):
             "about": user.about,
             "photo_url": user.photo_url
         }
+        logger.info(f"Returning response: {response}")
+        return response
     except Exception as e:
+        logger.error(f"Error in init_user: {str(e)}", exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @app.put("/api/users/{session_id}",
     summary="Обновление профиля пользователя",
