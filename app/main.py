@@ -25,8 +25,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Определение констант
+CURRENT_SESSION_ID = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+UPLOAD_DIR = Path("uploads")
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
+
 # Создание таблиц в базе данных (если их ещё нет)
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
+except Exception as e:
+    logger.error(f"Error creating database tables: {str(e)}")
+    raise
 
 app = FastAPI(
     title="Telegram WebApp for Auto Enthusiasts",
@@ -82,9 +92,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 # Добавляем middleware для логирования
 app.add_middleware(RequestLoggingMiddleware)
-
-# Глобальная переменная для хранения текущей сессии
-CURRENT_SESSION_ID = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 @app.get("/")
 async def read_root(request: Request):
@@ -268,8 +275,6 @@ def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
 
 @app.post("/photos/upload/{session_id}")
 async def upload_photo(session_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
