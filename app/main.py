@@ -18,6 +18,13 @@ from app.schemas import AboutUpdate, UserUpdate, UserCreate, User, LikeCreate, M
 import random
 import string
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Создание таблиц в базе данных (если их ещё нет)
 models.Base.metadata.create_all(bind=engine)
 
@@ -58,21 +65,20 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         if request.method in ['POST', 'PUT']:
             try:
                 if not request.headers.get('content-type', '').startswith('multipart/form-data'):
-                    body = await request.json()
-                    logger.debug(f"Request body: {body}")
-            except:
-                pass
-
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
-            logger.info(f"Response status: {response.status_code}, Process time: {process_time:.3f}s")
-            return response
-        except Exception as e:
-            logger.error(f"Request failed: {str(e)}")
-            process_time = time.time() - start_time
-            logger.info(f"Error response, Process time: {process_time:.3f}s")
-            raise
+                    body = await request.body()
+                    if body:
+                        logger.debug(f"Request body: {body.decode()}")
+            except Exception as e:
+                logger.error(f"Error reading request body: {str(e)}")
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Log response details
+        process_time = time.time() - start_time
+        logger.info(f"Response: {response.status_code} (took {process_time:.2f} seconds)")
+        
+        return response
 
 # Добавляем middleware для логирования
 app.add_middleware(RequestLoggingMiddleware)
