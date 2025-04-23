@@ -7,13 +7,14 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response, HTTPException, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from app import models, crud, database, utils, schemas
+from app import models, crud, database, utils
 from app.database import SessionLocal, engine
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from app.schemas import AboutUpdate, UserUpdate, UserCreate, User, LikeCreate, MatchRead, PhotoUpload
 import random
 import string
 
