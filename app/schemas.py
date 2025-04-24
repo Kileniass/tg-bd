@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class UserBase(BaseModel):
-    telegram_id: int
+    device_id: str
 
 class UserCreate(UserBase):
     name: Optional[str] = None
@@ -13,7 +13,6 @@ class UserCreate(UserBase):
     about: Optional[str] = None
 
 class UserUpdate(BaseModel):
-    telegram_id: int
     name: str
     age: int
     photo_url: Optional[str] = None
@@ -23,11 +22,11 @@ class UserUpdate(BaseModel):
 
 class User(UserBase):
     id: int
-    name: str
-    age: int
+    name: Optional[str] = None
+    age: Optional[int] = None
     photo_url: Optional[str] = None
-    car: str
-    region: str
+    car: Optional[str] = None
+    region: Optional[str] = None
     about: Optional[str] = None
 
     class Config:

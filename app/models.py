@@ -6,9 +6,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, index=True, nullable=False)
-    session_id = Column(String, unique=True, index=True)  # Новый ID для каждой сессии
-    is_new = Column(Boolean, default=True)
+    device_id = Column(String, unique=True, index=True, nullable=False)  # Уникальный ID устройства
     name = Column(String, nullable=True)
     age = Column(Integer, nullable=True)
     photo_url = Column(String, nullable=True)

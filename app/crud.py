@@ -2,9 +2,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from app import models, schemas
 from typing import List, Tuple, Optional
+import uuid
 
-def get_user_by_telegram_id(db: Session, telegram_id: int) -> Optional[models.User]:
-    return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
+def generate_device_id() -> str:
+    return str(uuid.uuid4())
+
+def get_user_by_device_id(db: Session, device_id: str) -> Optional[models.User]:
+    return db.query(models.User).filter(models.User.device_id == device_id).first()
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db_user = models.User(**user.dict())
@@ -13,8 +17,8 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db.refresh(db_user)
     return db_user
 
-def update_user(db: Session, telegram_id: int, user_update: schemas.UserUpdate) -> Optional[models.User]:
-    db_user = get_user_by_telegram_id(db, telegram_id)
+def update_user(db: Session, device_id: str, user_update: schemas.UserUpdate) -> Optional[models.User]:
+    db_user = get_user_by_device_id(db, device_id)
     if db_user:
         update_data = user_update.dict(exclude_unset=True)
         for key, value in update_data.items():
@@ -23,8 +27,8 @@ def update_user(db: Session, telegram_id: int, user_update: schemas.UserUpdate) 
         db.refresh(db_user)
     return db_user
 
-def update_user_photo(db: Session, telegram_id: int, photo_url: str) -> Optional[models.User]:
-    db_user = get_user_by_telegram_id(db, telegram_id)
+def update_user_photo(db: Session, device_id: str, photo_url: str) -> Optional[models.User]:
+    db_user = get_user_by_device_id(db, device_id)
     if db_user:
         db_user.photo_url = photo_url
         db.commit()
