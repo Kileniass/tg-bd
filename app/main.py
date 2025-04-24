@@ -18,11 +18,16 @@ from app.schemas import AboutUpdate, UserUpdate, UserCreate, User as UserSchema,
 import random
 import string
 import uuid
+import traceback
 
-# Настройка логирования
+# Улучшенная настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -52,10 +57,13 @@ try:
             db.add(test_user)
             db.commit()
             logger.info("Test user created successfully")
+    except Exception as e:
+        logger.error(f"Error creating test user: {str(e)}")
+        db.rollback()
     finally:
         db.close()
 except Exception as e:
-    logger.error(f"Error creating database tables or test user: {str(e)}")
+    logger.error(f"Error creating database tables: {str(e)}")
     raise
 
 app = FastAPI(
@@ -80,20 +88,38 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        logger.error(f"Database session error: {str(e)}")
+        raise
     finally:
         db.close()
 
-# Middleware для логирования запросов
+# Улучшенный middleware для логирования запросов
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
-        logger.info(f"Request: {request.method} {request.url}")
-        response = await call_next(request)
-        process_time = time.time() - start_time
-        logger.info(f"Response: {response.status_code} (took {process_time:.2f} seconds)")
-        return response
+        request_id = str(uuid.uuid4())
+        logger.info(f"[{request_id}] Request: {request.method} {request.url}")
+        
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            logger.info(f"[{request_id}] Response: {response.status_code} (took {process_time:.2f} seconds)")
+            return response
+        except Exception as e:
+            logger.error(f"[{request_id}] Error: {str(e)}\n{traceback.format_exc()}")
+            raise
 
 app.add_middleware(RequestLoggingMiddleware)
+
+# Глобальный обработчик ошибок
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global error handler: {str(exc)}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)}
+    )
 
 @app.get("/")
 async def read_root():
