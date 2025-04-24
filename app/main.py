@@ -148,8 +148,11 @@ async def init_user(db: Session = Depends(get_db)):
         user_create = UserCreate(device_id=device_id)
         user = crud.create_user(db, user_create)
         
+        if not user:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+            
         return {
-            "user_id": user.id,
+            "id": user.id,
             "device_id": user.device_id,
             "name": user.name,
             "age": user.age,
@@ -177,10 +180,24 @@ def update_user_profile(device_id: str, user_update: UserUpdate, db: Session = D
     description="Возвращает данные профиля пользователя",
     response_description="Данные пользователя")
 def get_profile(device_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    try:
+        user = crud.get_user_by_device_id(db, device_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return {
+            "id": user.id,
+            "device_id": user.device_id,
+            "name": user.name,
+            "age": user.age,
+            "car": user.car,
+            "region": user.region,
+            "about": user.about,
+            "photo_url": user.photo_url
+        }
+    except Exception as e:
+        logger.error(f"Error in get_profile: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/users/{device_id}/like/{target_id}",
     summary="Лайк профиля",
@@ -211,14 +228,30 @@ def dislike_profile(device_id: str, target_id: int, db: Session = Depends(get_db
     description="Возвращает следующий профиль для просмотра",
     response_description="Данные профиля")
 def next_profile(device_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    next_user = crud.get_next_profile(db, user.id)
-    if not next_user:
-        return {"profile": None}
-    return {"profile": next_user}
+    try:
+        user = crud.get_user_by_device_id(db, device_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        next_user = crud.get_next_profile(db, user.id)
+        if not next_user:
+            return {"profile": None}
+            
+        # Формируем ответ с полным профилем
+        return {
+            "profile": {
+                "id": next_user.id,
+                "name": next_user.name,
+                "age": next_user.age,
+                "car": next_user.car,
+                "region": next_user.region,
+                "about": next_user.about,
+                "photo_url": next_user.photo_url
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error in next_profile: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/users/{device_id}/matches",
     summary="Получение совпадений",
