@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -6,12 +6,12 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    device_id = Column(String, unique=True, index=True, nullable=False)  # Уникальный ID устройства
-    name = Column(String, nullable=True)
-    age = Column(Integer, nullable=True)
+    telegram_id = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+    age = Column(Integer, nullable=False)
     photo_url = Column(String, nullable=True)
-    car = Column(String, nullable=True)
-    region = Column(String, nullable=True)
+    car = Column(String, nullable=False)
+    region = Column(String, nullable=False)
     about = Column(String, nullable=True)
 
     # Связи с лайками и дизлайками

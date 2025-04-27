@@ -1,300 +1,145 @@
-import os
-import time
-import shutil
-import logging
-from typing import Callable
-from pathlib import Path
-from fastapi import FastAPI, Request, Response, HTTPException, Depends, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app import models, crud, database, utils
+from app import models, crud, database, utils, schemas
 from app.database import SessionLocal, engine
+from fastapi.middleware.cors import CORSMiddleware
+from app.schemas import AboutUpdate
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-from app.schemas import AboutUpdate, UserUpdate, UserCreate, User as UserSchema, LikeCreate, MatchRead, PhotoUpload
-import random
-import string
-import uuid
-import traceback
-
-# Улучшенная настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Определение констант
-UPLOAD_DIR = Path("uploads")
-ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
 
 # Создание таблиц в базе данных (если их ещё нет)
-try:
-    models.Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created successfully")
-    
-    # Создаем тестового пользователя
-    db = SessionLocal()
-    try:
-        test_device_id = "test-device-001"
-        test_user = crud.get_user_by_device_id(db, test_device_id)
-        if not test_user:
-            test_user = models.User(
-                device_id=test_device_id,
-                name="Михаил",
-                age=18,
-                car="Mercedes Benz S-class W220",
-                region="Новосибирск",
-                about="Каждый чёткий пацан должен купить себе старого немца"
-            )
-            db.add(test_user)
-            db.commit()
-            logger.info("Test user created successfully")
-    except Exception as e:
-        logger.error(f"Error creating test user: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
-except Exception as e:
-    logger.error(f"Error creating database tables: {str(e)}")
-    raise
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Auto Enthusiasts Dating App",
+    title="Telegram WebApp for Auto Enthusiasts",
     description="API для приложения знакомств автолюбителей",
-    version="1.0.0",
-    debug=True
+    version="1.0.0"
 )
 
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kileniass.github.io"],  # Разрешаем только наш домен
-    allow_credentials=True,
+    allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с нашего домена
+    allow_credentials=False,  # Отключаем credentials для CORS
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"]
+    allow_headers=["Content-Type", "Accept", "Origin"],
 )
 
-# Добавляем обработчик OPTIONS запросов
-@app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "https://kileniass.github.io"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Origin"
-    return response
-
-# Dependency для получения DB сессии
+# Зависимость для получения сессии базы данных
 def get_db():
     db = SessionLocal()
     try:
         yield db
-    except Exception as e:
-        logger.error(f"Database session error: {str(e)}")
-        raise
     finally:
         db.close()
 
-# Улучшенный middleware для логирования запросов
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        start_time = time.time()
-        request_id = str(uuid.uuid4())
-        logger.info(f"[{request_id}] Request: {request.method} {request.url}")
-        
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
-            logger.info(f"[{request_id}] Response: {response.status_code} (took {process_time:.2f} seconds)")
-            return response
-        except Exception as e:
-            logger.error(f"[{request_id}] Error: {str(e)}\n{traceback.format_exc()}")
-            raise
-
-app.add_middleware(RequestLoggingMiddleware)
-
-# Глобальный обработчик ошибок
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global error handler: {str(exc)}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)}
-    )
-
 @app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Auto Enthusiasts Dating App!"}
+def read_root():
+    return {"message": "Welcome to the auto racing community!"}
 
-@app.post("/api/init", 
+@app.get("/api/init/{telegram_id}", 
     summary="Инициализация пользователя",
-    description="Создает нового пользователя с уникальным device_id или возвращает существующего",
+    description="Создает нового пользователя или возвращает существующего",
     response_description="Данные пользователя")
-async def init_user(db: Session = Depends(get_db)):
-    try:
-        # Генерируем уникальный device_id
-        device_id = crud.generate_device_id()
-        
-        # Создаем нового пользователя
-        user_create = UserCreate(device_id=device_id)
-        user = crud.create_user(db, user_create)
-        
-        if not user:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-            
-        return {
-            "id": user.id,
-            "device_id": user.device_id,
-            "name": user.name,
-            "age": user.age,
-            "car": user.car,
-            "region": user.region,
-            "about": user.about,
-            "photo_url": user.photo_url
-        }
-    except Exception as e:
-        logger.error(f"Error in init_user: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+def init_user(telegram_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        new_user = schemas.UserCreate(telegram_id=telegram_id)
+        user = crud.create_user(db, new_user)
+    return user
 
-@app.put("/api/users/{device_id}",
+@app.put("/api/users/{telegram_id}",
     summary="Обновление профиля пользователя",
     description="Обновляет данные профиля пользователя",
     response_description="Обновленные данные пользователя")
-def update_user_profile(device_id: str, user_update: UserUpdate, db: Session = Depends(get_db)):
-    updated_user = crud.update_user(db, device_id, user_update)
+def update_user_profile(telegram_id: str, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+    updated_user = crud.update_user(db, telegram_id, user_update)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
     return updated_user
 
-@app.get("/api/users/{device_id}",
+@app.get("/api/users/{telegram_id}",
     summary="Получение профиля пользователя",
     description="Возвращает данные профиля пользователя",
     response_description="Данные пользователя")
-def get_profile(device_id: str, db: Session = Depends(get_db)):
-    try:
-        user = crud.get_user_by_device_id(db, device_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        return {
-            "id": user.id,
-            "device_id": user.device_id,
-            "name": user.name,
-            "age": user.age,
-            "car": user.car,
-            "region": user.region,
-            "about": user.about,
-            "photo_url": user.photo_url
-        }
-    except Exception as e:
-        logger.error(f"Error in get_profile: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+def get_user_profile(telegram_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_telegram_id(db, telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-@app.post("/api/users/{device_id}/like/{target_id}",
+@app.post("/api/profiles/{user_id}/like",
     summary="Лайк профиля",
     description="Отправляет лайк пользователю и проверяет на совпадение",
     response_description="Результат лайка и информация о совпадении")
-def like_profile(device_id: str, target_id: int, db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    like, match = crud.like_user(db, user.id, target_id)
-    return {"match": match is not None}
+def like_profile(user_id: int, current_user_id: int, db: Session = Depends(get_db)):
+    like, match = crud.like_user(db, current_user_id, user_id)
+    return {"like": like.id if like else None, "match": match.id if match else None}
 
-@app.post("/api/users/{device_id}/dislike/{target_id}",
+@app.post("/api/profiles/{user_id}/dislike",
     summary="Дизлайк профиля",
     description="Отправляет дизлайк пользователю",
     response_description="Подтверждение дизлайка")
-def dislike_profile(device_id: str, target_id: int, db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    crud.dislike_user(db, user.id, target_id)
-    return {"status": "success"}
+def dislike_profile(user_id: int, current_user_id: int, db: Session = Depends(get_db)):
+    crud.dislike_user(db, current_user_id, user_id)
+    return {"message": "Profile disliked"}
 
-@app.get("/api/users/{device_id}/next",
+@app.get("/api/profiles/next",
     summary="Получение следующего профиля",
     description="Возвращает следующий профиль для просмотра",
     response_description="Данные профиля")
-def next_profile(device_id: str, db: Session = Depends(get_db)):
-    try:
-        user = crud.get_user_by_device_id(db, device_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        next_user = crud.get_next_profile(db, user.id)
-        if not next_user:
-            return {"profile": None}
-            
-        # Формируем ответ с полным профилем
+def next_profile(current_user_id: int, db: Session = Depends(get_db)):
+    profile = crud.get_next_profile(db, current_user_id)
+    if profile:
         return {
             "profile": {
-                "id": next_user.id,
-                "name": next_user.name,
-                "age": next_user.age,
-                "car": next_user.car,
-                "region": next_user.region,
-                "about": next_user.about,
-                "photo_url": next_user.photo_url
+                "id": profile.id,
+                "name": profile.name,
+                "age": profile.age,
+                "photo_url": profile.photo_url,
+                "car": profile.car,
+                "region": profile.region,
+                "about": profile.about
             }
         }
-    except Exception as e:
-        logger.error(f"Error in next_profile: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    else:
+        return {"message": "No more profiles"}
 
-@app.get("/api/users/{device_id}/matches",
+@app.get("/api/matches/{user_id}",
     summary="Получение совпадений",
     description="Возвращает список пользователей, с которыми есть совпадение",
     response_description="Список совпадений")
-def get_matches(device_id: str, db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    matches = crud.get_matches(db, user.id)
-    return matches
+def matches(user_id: int, db: Session = Depends(get_db)):
+    matched_users = crud.get_matches(db, user_id)
+    return {
+        "matches": [
+            {
+                "id": user.id,
+                "name": user.name,
+                "age": user.age,
+                "photo_url": user.photo_url,
+                "car": user.car,
+                "region": user.region,
+                "about": user.about
+            }
+            for user in matched_users
+        ]
+    }
 
-@app.post("/api/users/{device_id}/photo",
-    summary="Загрузка фото профиля",
-    description="Загружает новое фото профиля",
-    response_description="URL загруженного фото")
-async def upload_photo(device_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    user = crud.get_user_by_device_id(db, device_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+@app.get("/api/generate-password",
+    summary="Генерация пароля",
+    description="Генерирует случайный пароль",
+    response_description="Сгенерированный пароль")
+def generate_password():
+    password = utils.generate_password()
+    return {"password": password}
 
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid file type")
-
-    try:
-        # Создаем директорию для загрузок, если её нет
-        UPLOAD_DIR.mkdir(exist_ok=True)
-        
-        # Генерируем уникальное имя файла
-        file_extension = file.filename.split('.')[-1]
-        filename = f"{device_id}_{int(time.time())}.{file_extension}"
-        file_path = UPLOAD_DIR / filename
-        
-        # Сохраняем файл
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Обновляем URL фото в профиле
-        photo_url = f"/static/photos/{filename}"
-        updated_user = crud.update_user_photo(db, device_id, photo_url)
-        
-        return {"photo_url": photo_url}
-    except Exception as e:
-        logger.error(f"Error uploading photo: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error uploading file")
+@app.put("/api/profiles/about",
+    summary="Обновление описания",
+    description="Обновляет раздел 'О себе' в профиле",
+    response_description="Обновленное описание")
+def update_about(data: AboutUpdate, db: Session = Depends(get_db)):
+    user = crud.update_about(db, user_id=data.user_id, about_text=data.about)
+    if user:
+        return {"message": "About section updated", "about": user.about}
+    else:
+        return {"message": "User not found"}
