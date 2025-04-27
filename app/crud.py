@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app import models, schemas
+from sqlalchemy import func
 
 def get_user_by_telegram_id(db: Session, telegram_id: str):
     return db.query(models.User).filter(models.User.telegram_id == telegram_id).first()
@@ -61,7 +62,7 @@ def get_next_profile(db: Session, current_user_id: int):
     return db.query(models.User).filter(
         models.User.id != current_user_id,
         ~models.User.id.in_(skipped_ids)
-    ).first()
+    ).order_by(func.random()).first()
 
 def get_matches(db: Session, user_id: int):
     return db.query(models.User).join(
