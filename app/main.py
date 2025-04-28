@@ -18,7 +18,7 @@ app = FastAPI(
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://Kileniass.github.io", "https://github.com/Kileniass/KURS/tree/main/dating-app/image", "https://raw.githubusercontent.com/Kileniass/KURS/main/dating-app/image/"],  # Разрешаем запросы только с нашего домена
+    allow_origins=["https://Kileniass.github.io", "https://raw.githubusercontent.com/Kileniass/KURS/main/dating-app/image/"],  # Разрешаем запросы только с нашего домена
     allow_credentials=False,  # Отключаем credentials для CORS
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Origin"],
