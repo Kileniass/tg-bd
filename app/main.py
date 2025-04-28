@@ -18,7 +18,7 @@ app = FastAPI(
 # Middleware для CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://kileniass.github.io"],  # Разрешаем запросы только с нашего домена
+    allow_origins=["*"],  # Разрешаем запросы только с нашего домена
     allow_credentials=False,  # Отключаем credentials для CORS
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Origin"],
